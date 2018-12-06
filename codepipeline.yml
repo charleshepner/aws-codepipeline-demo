@@ -1,0 +1,25 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Codepipeline demo
+Resources:
+  Type: AWS::CodeBuild::Project
+  Properties:
+    Artifacts:
+      Type: CODEPIPELINE
+    BadgeEnabled: true
+    Description: Codebuild demo
+    Environment:
+      ComputeType: BUILD_GENERAL1_SMALL
+      Image: aws/codebuild/docker:17.09.0
+      Type: LINUX_CONTAINER
+    Name: codebuild-demo
+    SecondaryArtifacts:
+      - Artifacts
+    SecondarySources:
+      - Source
+    ServiceRole: String
+    Source: Source
+    Tags:
+      - Resource Tag
+    TimeoutInMinutes: Integer
+    Triggers: Triggers
+    VpcConfig: VpcConfig
