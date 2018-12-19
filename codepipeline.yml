@@ -1,25 +1,175 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: Codepipeline demo
 Resources:
-  Type: AWS::CodeBuild::Project
-  Properties:
-    Artifacts:
-      Type: CODEPIPELINE
-    BadgeEnabled: true
-    Description: Codebuild demo
-    Environment:
-      ComputeType: BUILD_GENERAL1_SMALL
-      Image: aws/codebuild/docker:17.09.0
-      Type: LINUX_CONTAINER
-    Name: codebuild-demo
-    SecondaryArtifacts:
-      - Artifacts
-    SecondarySources:
-      - Source
-    ServiceRole: String
-    Source: Source
-    Tags:
-      - Resource Tag
-    TimeoutInMinutes: Integer
-    Triggers: Triggers
-    VpcConfig: VpcConfig
+  CodePipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "codepipeline.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        -
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "s3:GetObject"
+                  - "s3:GetObjectVersion"
+                  - "s3:GetBucketVersioning"
+                Resource: "*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "s3:PutObject"
+                Resource:
+                  - "arn:aws:s3:::chepner-codepipeline-demo*"
+                  - "arn:aws:s3:::codepipeline*"
+                  - "arn:aws:s3:::elasticbeanstalk*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "codedeploy:CreateDeployment"
+                  - "codedeploy:GetApplicationRevision"
+                  - "codedeploy:GetDeployment"
+                  - "codedeploy:GetDeploymentConfig"
+                  - "codedeploy:RegisterApplicationRevision"
+                Resource: "*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "elasticbeanstalk:CreateApplicationVersion"
+                  - "elasticbeanstalk:DescribeApplicationVersions"
+                  - "elasticbeanstalk:DescribeEnvironments"
+                  - "elasticbeanstalk:DescribeEvents"
+                  - "elasticbeanstalk:UpdateEnvironment"
+                  - "autoscaling:DescribeAutoScalingGroups"
+                  - "autoscaling:DescribeLaunchConfigurations"
+                  - "autoscaling:DescribeScalingActivities"
+                  - "autoscaling:ResumeProcesses"
+                  - "autoscaling:SuspendProcesses"
+                  - "cloudformation:GetTemplate"
+                  - "cloudformation:DescribeStackResource"
+                  - "cloudformation:DescribeStackResources"
+                  - "cloudformation:DescribeStackEvents"
+                  - "cloudformation:DescribeStacks"
+                  - "cloudformation:UpdateStack"
+                  - "ec2:DescribeInstances"
+                  - "ec2:DescribeImages"
+                  - "ec2:DescribeAddresses"
+                  - "ec2:DescribeSubnets"
+                  - "ec2:DescribeVpcs"
+                  - "ec2:DescribeSecurityGroups"
+                  - "ec2:DescribeKeyPairs"
+                  - "elasticloadbalancing:DescribeLoadBalancers"
+                  - "rds:DescribeDBInstances"
+                  - "rds:DescribeOrderableDBInstanceOptions"
+                  - "sns:ListSubscriptionsByTopic"
+                Resource: "*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "lambda:invokefunction"
+                  - "lambda:listfunctions"
+                Resource: "*"
+              -
+                Effect: "Allow"
+                Action:
+                  - "s3:ListBucket"
+                  - "s3:GetBucketPolicy"
+                  - "s3:GetObjectAcl"
+                  - "s3:PutObjectAcl"
+                  - "s3:DeleteObject"
+                Resource: "arn:aws:s3:::elasticbeanstalk*"
+          PolicyName: "aws-service-role-codepipeline"
+  CodePipelineS3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: "chepner-codepipeline-demo"
+      VersioningConfiguration:
+        Status: Enabled
+  CodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      ArtifactStore:
+        Type: S3
+        Location: !Ref CodePipelineS3Bucket
+      Name: "chepner-codepipeline-demo"
+      RoleArn: !GetAtt CodePipelineServiceRole.Arn
+      Stages:
+        -
+          Actions:
+            -
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Provider: GitHub
+                Version: 1
+              Name: SourceAction
+              Configuration:
+                Owner: charleshepner
+                Repo: aws-codepipeline-demo
+                PollForSourceChanges: false
+                Branch: master
+                OAuthToken: '{{resolve:ssm:/chepner-codebuild-demo/github-oauth:2}}'
+              OutputArtifacts:
+                -
+                  Name: TemplateSource
+          Name: "SourceTemplates"
+        -
+          Actions:
+            -
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: AWS CloudFormation
+                Version: 1
+              Name: DeployAction
+              InputArtifacts:
+                -
+                  Name: TemplateSource
+              Configuration:
+                ActionMode: REPLACE_ON_FAILURE
+                RoleArn: arn:aws:iam::652229425299:role/cloudformation-aws-push
+                StackName: chepner-codepipeline-demo-app
+                TemplatePath: TemplateSource::demoapp.yml
+            -
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Provider: Manual
+                Version: 1
+              Name: ApprovalAction
+          Name: "DeployTemplates"
+
+  # Type: AWS::CodeBuild::Project
+  # Properties:
+  #   Artifacts:
+  #     Type: CODEPIPELINE
+  #   BadgeEnabled: true
+  #   Description: Codebuild demo
+  #   Environment:
+  #     ComputeType: BUILD_GENERAL1_SMALL
+  #     Image: aws/codebuild/docker:17.09.0
+  #     Type: LINUX_CONTAINER
+  #   Name: codebuild-demo
+  #   SecondaryArtifacts:
+  #     - Artifacts
+  #   SecondarySources:
+  #     - Source
+  #   ServiceRole: String
+  #   Source: Source
+  #   Tags:
+  #     - Resource Tag
+  #   TimeoutInMinutes: Integer
+  #   Triggers: Triggers
+  #   VpcConfig: VpcConfig
+
